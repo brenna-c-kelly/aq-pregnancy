@@ -25,21 +25,8 @@ no2_grid <- merge(no2_shp, no2, by = "grid_id")
 
 
 no2_100101 <- readRDS("/Users/brenna/Documents/School/Research/aq-pregnancy/data/Grid_1km_UT/NO2/Daily/2010/20100101.rds")
-no2_100102 <- readRDS("/Users/brenna/Documents/School/Research/aq-pregnancy/data/Grid_1km_UT/NO2/Daily/2010/20100102.rds")
-no2_100103 <- readRDS("/Users/brenna/Documents/School/Research/aq-pregnancy/data/Grid_1km_UT/NO2/Daily/2010/20100103.rds")
-no2_100104 <- readRDS("/Users/brenna/Documents/School/Research/aq-pregnancy/data/Grid_1km_UT/NO2/Daily/2010/20100104.rds")
-no2_100105 <- readRDS("/Users/brenna/Documents/School/Research/aq-pregnancy/data/Grid_1km_UT/NO2/Daily/2010/20100105.rds")
-no2_100106 <- readRDS("/Users/brenna/Documents/School/Research/aq-pregnancy/data/Grid_1km_UT/NO2/Daily/2010/20100106.rds")
-no2_100107 <- readRDS("/Users/brenna/Documents/School/Research/aq-pregnancy/data/Grid_1km_UT/NO2/Daily/2010/20100107.rds")
-no2_100108 <- readRDS("/Users/brenna/Documents/School/Research/aq-pregnancy/data/Grid_1km_UT/NO2/Daily/2010/20100108.rds")
-no2_100109 <- readRDS("/Users/brenna/Documents/School/Research/aq-pregnancy/data/Grid_1km_UT/NO2/Daily/2010/20100109.rds")
-no2_100110 <- readRDS("/Users/brenna/Documents/School/Research/aq-pregnancy/data/Grid_1km_UT/NO2/Daily/2010/20100110.rds")
-no2_100111 <- readRDS("/Users/brenna/Documents/School/Research/aq-pregnancy/data/Grid_1km_UT/NO2/Daily/2010/20100111.rds")
-no2_100112 <- readRDS("/Users/brenna/Documents/School/Research/aq-pregnancy/data/Grid_1km_UT/NO2/Daily/2010/20100112.rds")
-no2_100113 <- readRDS("/Users/brenna/Documents/School/Research/aq-pregnancy/data/Grid_1km_UT/NO2/Daily/2010/20100113.rds")
-no2_100114 <- readRDS("/Users/brenna/Documents/School/Research/aq-pregnancy/data/Grid_1km_UT/NO2/Daily/2010/20100114.rds")
 
-test <- as.data.frame(rbind(no2_100101, 
+test <- as.data.frame(rbind(no2_100101))#, 
                             no2_100102, 
                             no2_100103,
                             no2_100104, 
@@ -70,7 +57,16 @@ test <- no2_dat[c(1:10000), ]
 tm_shape(test) +
   tm_polygons(col = "grid_id", lwd = 0, style = "cont")
 
+test %>% 
+  # add date as date
+  #mutate(date = ymd(date)) %>%
+  # plot them
+  ggplot( aes(x = date, y = value, color = group, group = group)) +
+  geom_line() + geom_point() +   theme_test()
 
+names(test)
+ggplot(test, aes(x = date, y = pop)) + 
+  geom_line(color = "#FC4E07", size = 2)
 
 
 
@@ -86,7 +82,7 @@ no2_10_all <- as.data.frame(no2_10_all)
 no2_10_all <- no2_10_all_t
 
 system.time(
-for(i in 1:14){#length(no2_10_files)) {
+for(i in 1:365){#length(no2_10_files)) {
   no2_10 <- readRDS(paste0(getwd(), "/data/Grid_1km_UT/NO2/Daily/2010/", no2_10_files[i]))
   no2_10 <- as.data.frame(no2_10)
   # *avg across weeks here*
@@ -102,22 +98,22 @@ rownames(no2_10_all)
 
 no2_10_sub <- no2_10_all[, c(1:10)]
 
-no2_10_sub <- no2_10_all
+no2_10_sub <- no2_10_all[, c(1:1000)]
 
-no2_10_sub <- no2_10_sub %>% #group_by(personid) %>% 
+no2_10_all <- no2_10_all %>% #group_by(personid) %>% 
   group_by(x = ceiling(row_number()/7)) %>%
   summarise_all(list(mean = mean, max = max, median = median))
-no2_10_sub_t <- transpose(no2_10_sub)
-rownames(no2_10_sub_t) <- colnames(no2_10_sub)
-colnames(no2_10_sub_t) <- c("wk_1", "wk_2", "wk_3")
+no2_10_all_t <- transpose(no2_10_all)
+rownames(no2_10_all_t) <- colnames(no2_10_all)
+colnames(no2_10_all_t) <- c("wk_1", "wk_2", "wk_3")
 
-no2_10_sub_t$cell <- str_split_fixed(rownames(no2_10_sub_t), "_", 2)[, 1]
-no2_10_sub_t$stat <- str_split_fixed(rownames(no2_10_sub_t), "_", 2)[, 2]
-no2_10_sub_t <- no2_10_sub_t[-1, ]
+no2_10_all_t$cell <- str_split_fixed(rownames(no2_10_all_t), "_", 2)[, 1]
+no2_10_all_t$stat <- str_split_fixed(rownames(no2_10_all_t), "_", 2)[, 2]
+no2_10_all_t <- no2_10_all_t[-1, ]
 
-no2_10_sub_t <- no2_10_sub_t %>%
+no2_10_all_t <- no2_10_all_t %>%
   group_by(cell) %>%
   pivot_wider(names_from = stat, values_from = c(wk_1, wk_2, wk_3))
 
-no2_10_sub_t
+no2_10_all_t
 

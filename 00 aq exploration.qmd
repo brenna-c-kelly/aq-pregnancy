@@ -1,26 +1,144 @@
 ---
 title: "00 aq exploration"
 format: html
+code-fold: true
 editor: visual
 ---
 
-## Quarto
-
-Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
-
-## Running Code
-
-When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
-
 ```{r}
-1 + 1
+#| label: load-packages
+#| include: false
+
+library(sf)
+library(tmap)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(stringr)
+library(kohonen)
+library(viridis)
+library(data.table)
+library(RColorBrewer)
+
 ```
 
-You can add options to executable code like this
+```{r}
+
+
+no2 <- read.csv("data/aq/NO2Grid.csv")
+no2_shp <- st_read("data/shapefiles/NO2Grid(Polygons).shp")
+
+no2_grid <- merge(no2_shp, no2, by = "grid_id")
+
+no2_10_files <- list.files("data/Grid_1km_UT/NO2/Daily/2010/")
+
+no2_10_all <- readRDS(paste0("data/Grid_1km_UT/NO2/Daily/2010/", no2_10_files[1]))
+
+no2_10_all <- as.data.frame(no2_10_all)
+#no2_10_all_t <- transpose(no2_10_all)
+#rownames(no2_10_all_t) <- colnames(no2_10_all)
+#colnames(no2_10_all_t) <- "X"
+
+#no2_10_all <- no2_10_all_t
+
+system.time(
+for(i in 1:20){#length(no2_10_files)) {
+  no2_10 <- readRDS(paste0(getwd(), "/data/Grid_1km_UT/NO2/Daily/2010/", no2_10_files[i]))
+  no2_10 <- as.data.frame(no2_10)
+  # *avg across weeks here*
+  #no2_10_t <- transpose(no2_10)
+  #rownames(no2_10_t) <- colnames(no2_10)
+  #colnames(no2_10_t) <- substr(no2_10_files[i], start = 0, stop = nchar(no2_10_files[i])-4) #colname = date
+  #no2_10 <- no2_10_t
+  #names(no2_10) <- tolower(names(no2_10))
+  no2_10_all <- rbind(no2_10_all, no2_10)
+}
+)
+rownames(no2_10_all)
+
+no2_10_sub <- no2_10_all[, c(1:10)]
+
+no2_10_sub <- no2_10_all[, c(1:1000)]
+
+no2_10_sub <- no2_10_sub %>% #group_by(personid) %>% 
+  group_by(x = ceiling(row_number()/7)) %>%
+  summarise_all(list(mean = mean, max = max, median = median))
+no2_10_sub_t <- transpose(no2_10_sub)
+rownames(no2_10_sub_t) <- colnames(no2_10_sub)
+colnames(no2_10_sub_t) <- c("wk_1", "wk_2", "wk_3")
+
+no2_10_sub_t$cell <- str_split_fixed(rownames(no2_10_sub_t), "_", 2)[, 1]
+no2_10_sub_t$stat <- str_split_fixed(rownames(no2_10_sub_t), "_", 2)[, 2]
+no2_10_sub_t <- no2_10_sub_t[-1, ]
+
+no2_10_sub_t <- no2_10_sub_t %>%
+  group_by(cell) %>%
+  pivot_wider(names_from = stat, values_from = c(wk_1, wk_2, wk_3))
+
+names(no2_10_sub_t)
+
+```
 
 ```{r}
 #| echo: false
-2 * 2
+
+som_grid <- somgrid(xdim = 14, ydim = 11, topo = "hexagonal")
+
+# drop geometry and unnecessary columns
+no2_dat_cl <- st_drop_geometry(no2_10_sub_t)#no2_10_all)#no2_dat)
+#no2_dat_cl <- no2_dat_cl[, c("grid_id", "X1", "X2", "X3")]
+no2_dat_cl$grid_id <- as.character(no2_10_sub_t$cell)#no2_dat_cl$grid_id)
+
+# standardize values (max of all columns)
+no2_dat_cl <- no2_dat_cl %>%
+  mutate_if(is.numeric, function(x) scale(x, center = FALSE, 
+                                   scale = max(no2_dat_cl[, 2:10], na.rm = TRUE)/100))
+
+no2_dat_m <- as.matrix(no2_dat_cl[c(1:2500), c(2:10)])
+
+no2_som <- som(no2_dat_m, som_grid, rlen = 1000)
+
 ```
 
-The `echo: false` option disables the printing of code (only output is displayed).
+```{r}
+#| label: fig-no2
+#| fig-cap: "NO2, Jan 01 2010 - Jan 21 2010"
+
+par(mfrow = c(3, 3))
+plot(no2_som, type = "property", property = no2_som$codes[[1]][,"wk_1_max"],
+     main = "wk_1_max", border = "white", shape = "straight", palette.name = turbo, heatkey = FALSE,#, heatkeywidth = 0.5,
+     zlim = c(0, 100))
+plot(no2_som, type = "property", property = no2_som$codes[[1]][,"wk_1_mean"],
+     main = "wk_1_mean", border = "white", shape = "straight", palette.name = turbo, heatkey = FALSE, zlim = c(0, 100))
+plot(no2_som, type = "property", property = no2_som$codes[[1]][,"wk_1_median"],
+     main = "wk_1_median", border = "white", shape = "straight", palette.name = turbo, heatkey = FALSE, zlim = c(0, 100))
+plot(no2_som, type = "property", property = no2_som$codes[[1]][,"wk_2_max"],
+     main = "wk_2_max", border = "white", shape = "straight", palette.name = turbo, heatkey = FALSE, zlim = c(0, 100))
+plot(no2_som, type = "property", property = no2_som$codes[[1]][,"wk_2_mean"],
+     main = "wk_2_mean", border = "white", shape = "straight", palette.name = turbo, heatkey = FALSE, zlim = c(0, 100))
+plot(no2_som, type = "property", property = no2_som$codes[[1]][,"wk_2_median"],
+     main = "wk_2_median", border = "white", shape = "straight", palette.name = turbo, heatkey = FALSE, zlim = c(0, 100))
+plot(no2_som, type = "property", property = no2_som$codes[[1]][,"wk_3_max"],
+     main = "wk_3_max", border = "white", shape = "straight", palette.name = turbo, heatkey = FALSE, zlim = c(0, 100))
+plot(no2_som, type = "property", property = no2_som$codes[[1]][,"wk_3_mean"],
+     main = "wk_3_mean", border = "white", shape = "straight", palette.name = turbo, heatkey = FALSE, zlim = c(0, 100))
+plot(no2_som, type = "property", property = no2_som$codes[[1]][,"wk_3_median"],
+     main = "wk_3_median", border = "white", shape = "straight", palette.name = turbo, heatkey = FALSE, zlim = c(0, 100))
+```
+
+### Linking grids to population data
+This will allow us to:
+- Reduce the size of data for analysis (71.6% of grids were unpopulated in 2010)
+- Study air quality with population characteristics (e.g., census/ACS variables)
+
+```{r}
+#| label: fig-grid-empty
+#| fig-cap: "Basic 1km grid cells"
+
+tm_shape(no2_grid) +
+  tm_polygons(col = "grid_id", lwd = 0, style = "cont")
+
+
+
+
+```
