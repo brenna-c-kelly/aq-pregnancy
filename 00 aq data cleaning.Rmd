@@ -1,0 +1,427 @@
+---
+title: "00 aq data cleaning"
+author: "Brenna Kelly"
+date: "2023-06-27"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(sf)
+library(tmap)
+library(dplyr)
+library(tidyr)
+library(dtplyr)
+library(stringr)
+library(data.table)
+library(multidplyr)
+library(doParallel)
+
+cl <- makeCluster(4)
+registerDoParallel(cl)
+
+#cluster <- new_cluster(10)
+
+```
+
+# NO2
+
+```{r}
+populated_ids <- read.csv("/Users/brenna/Documents/School/Research/aqs-inequities/aqs_inequities/populated_ids.csv")
+populated_ids <- populated_ids[, c("x")]
+
+no2 <- read.csv("data/aq/NO2Grid.csv")
+no2_shp <- st_read("data/shapefiles/NO2Grid(Polygons).shp")
+
+no2_grid <- merge(no2_shp, no2, by = "grid_id")
+
+test <- readRDS(paste0("data/Grid_1km_UT/NO2/Daily/2010/", no2_10_files[1]))
+test <- data.table(test)
+test <- transpose(test)
+
+plot(test_shp_pop$long, test_shp_pop$lat)
+
+test_shp <- cbind(test, no2)
+test_shp_pop <- test_shp %>%
+  filter(grid_id %in% populated_ids)
+test_shp_pop <- test_shp_pop[, c("V1")]
+test_2 <- transpose(test_shp_pop)
+Sys.time()
+no2_10_files <- list.files("data/Grid_1km_UT/NO2/Daily/2010/") # no2
+#no2_10_files <- list.files("data/Grid_1km_UT/o3/") # o3
+#no2_10_files <- list.files("data/Grid_1km_UT/pm25/") # pm25
+
+no2_10_all <- readRDS(paste0("data/Grid_1km_UT/NO2/Daily/2010/", no2_10_files[1]))
+no2_10_all <- data.table(no2_10_all)
+no2_10_all <- transpose(no2_10_all)
+no2_10_all <- cbind(no2_10_all, no2)
+no2_10_all <- no2_10_all %>%
+  filter(grid_id %in% populated_ids)
+no2_10_all <- no2_10_all[, c("grid_id", "V1")]
+no2_10_all <- transpose(no2_10_all)
+colnames(no2_10_all) <- as.character(no2_10_all[1, ])
+no2_10_all <- no2_10_all[-1, ]
+no2_10_all$date <- substr(no2_10_files[1], start = 0, stop = nchar(no2_10_files[1])-4) #colname = date
+
+system.time(
+for(i in 1:length(no2_10_files)){#length(no2_10_files)) {
+  no2_10 <- readRDS(paste0("data/Grid_1km_UT/NO2/Daily/2010/", no2_10_files[i]))
+  no2_10 <- data.table(no2_10)
+  no2_10 <- transpose(no2_10)
+  no2_10 <- cbind(no2_10, no2) %>%
+    filter(grid_id %in% populated_ids)
+  no2_10 <- no2_10[, c("grid_id", "V1")]
+  no2_10 <- transpose(no2_10)
+  colnames(no2_10) <- as.character(no2_10[1, ])
+  no2_10 <- no2_10[-1, ]
+  no2_10$date <- substr(no2_10_files[i], start = 0, stop = nchar(no2_10_files[i])-4) #colname = date colnames(no2_10)
+  #l = list(no2_10_all, no2_10)
+  no2_10_all <- rbind(no2_10_all, no2_10, use.names = TRUE)
+}
+)
+
+no2_10_all <- no2_10_all[-1, ] # duplicated jan 1
+#no2_10_all <- x#[, c(1:7500)]
+
+no2_10_all$week <- rep(1:ceiling(nrow(no2_10_all)/7), length.out = nrow(no2_10_all), each = 7)
+
+no2_by_weeks <- split(no2_10_all, no2_10_all$week)
+
+fx <- function(x) {
+  c(min = min(x), mean = mean(x), med = median(x), max = max(x))
+}
+
+no2_10_stats <- as.data.table(lapply(no2_by_weeks[[1]], fx))
+no2_10_stats$stat <- c("min", "mean", "med", "max")
+no2_10_stats <- no2_10_stats %>%
+    pivot_wider(names_from = stat, values_from = c(1:65604))
+
+
+system.time(
+for(i in 2:53) {
+  t <- as.data.table(lapply(no2_by_weeks[[i]], fx))
+  t$stat <- c("min", "mean", "med", "max")
+  t <- t %>%
+    pivot_wider(names_from = stat, values_from = c(1:65604))
+  no2_10_stats <- rbind(no2_10_stats, t)
+}
+)
+no2_10_stats$week <- paste0("week_", rep(1:nrow(no2_10_stats)))
+
+no2_10_all_t <- transpose(no2_10_stats)
+rownames(no2_10_all_t) <- colnames(no2_10_stats)
+colnames(no2_10_all_t) <- no2_10_stats$week
+no2_10_all_t <- no2_10_all_t[-1, ]
+
+no2_10_all_t$cell <- str_split_fixed(rownames(no2_10_all_t), "_", 2)[, 1]
+no2_10_all_t$stat <- str_split_fixed(rownames(no2_10_all_t), "_", 2)[, 2]
+write.csv(no2_10_all_t, "no2_10_all_t.csv")
+no2_10_all_t <- read.csv("no2_10_all_t.csv")
+x <- read.csv("no2_10_all_t.csv")
+x <- x[, -1]
+x <- x %>% 
+  pivot_longer(cols = c(1:53)) %>%
+  group_by(cell, name) %>%
+  filter(stat != "") %>%
+  pivot_wider(names_from = stat, values_from = value) %>%
+  rename(week = name)
+)
+Sys.time()
+```
+
+# PM2.5
+
+```{r}
+Sys.time()
+pm_10_files <- list.files("data/Grid_1km_UT/pm25/") # pm25
+#no2_10_files <- list.files("data/Grid_1km_UT/o3/") # o3
+
+pm_10_all <- readRDS(paste0("data/Grid_1km_UT/pm25/", pm_10_files[1]))
+pm_10_all <- data.table(pm_10_all)
+pm_10_all <- transpose(pm_10_all)
+pm_10_all <- cbind(pm_10_all, no2)
+pm_10_all <- pm_10_all %>%
+  filter(grid_id %in% populated_ids)
+pm_10_all <- pm_10_all[, c("grid_id", "V1")]
+pm_10_all <- transpose(pm_10_all)
+colnames(pm_10_all) <- as.character(pm_10_all[1, ])
+pm_10_all <- pm_10_all[-1, ]
+pm_10_all$date <- substr(pm_10_files[1], start = 0, stop = nchar(pm_10_files[1])-4) #colname = date
+
+system.time(
+for(i in 1:length(pm_10_files)){#length(no2_10_files)) {
+  pm_10 <- readRDS(paste0("data/Grid_1km_UT/pm25/", pm_10_files[i]))
+  pm_10 <- data.table(pm_10)
+  pm_10 <- transpose(pm_10)
+  pm_10 <- cbind(pm_10, no2) %>%
+    filter(grid_id %in% populated_ids)
+  pm_10 <- pm_10[, c("grid_id", "V1")]
+  pm_10 <- transpose(pm_10)
+  colnames(pm_10) <- as.character(pm_10[1, ])
+  pm_10 <- pm_10[-1, ]
+  pm_10$date <- substr(pm_10_files[i], start = 0, stop = nchar(pm_10_files[i])-4) #colname = date colnames(no2_10)
+  l = list(pm_10_all, pm_10)
+  pm_10_all <- rbind(pm_10_all, pm_10, use.names = TRUE)
+}
+)
+
+pm_10_all <- pm_10_all[-1, ] # duplicated jan 1
+#no2_10_all <- x#[, c(1:7500)]
+
+pm_10_all$week <- rep(1:ceiling(nrow(pm_10_all)/7), length.out = nrow(pm_10_all), each = 7)
+
+pm_by_weeks <- split(pm_10_all, pm_10_all$week)
+str(pm_by_weeks)
+
+fx <- function(x) {
+  c(min = min(x), mean = mean(x), med = median(x), max = max(x))
+}
+
+pm_10_stats <- as.data.table(lapply(pm_by_weeks[[1]], fx))
+pm_10_stats$stat <- c("min", "mean", "med", "max")
+pm_10_stats <- pm_10_stats %>%
+    pivot_wider(names_from = stat, values_from = c(1:65604))
+
+system.time(
+for(i in 2:53) {
+  t <- as.data.table(lapply(pm_by_weeks[[i]], fx))
+  t$stat <- c("min", "mean", "med", "max")
+  t <- t %>%
+    pivot_wider(names_from = stat, values_from = c(1:65604))
+  pm_10_stats <- rbind(pm_10_stats, t)
+}
+)
+pm_10_stats$week <- paste0("week_", rep(1:nrow(pm_10_stats)))
+
+pm_10_all_t <- transpose(pm_10_stats)
+rownames(pm_10_all_t) <- colnames(pm_10_stats)
+colnames(pm_10_all_t) <- pm_10_stats$week
+pm_10_all_t <- pm_10_all_t[-1, ]
+
+pm_10_all_t$cell <- str_split_fixed(rownames(pm_10_all_t), "_", 2)[, 1]
+pm_10_all_t$stat <- str_split_fixed(rownames(pm_10_all_t), "_", 2)[, 2]
+write.csv(pm_10_all_t, "pm_10_all_t.csv")
+
+y <- read.csv("pm_10_all_t.csv")
+y <- y[, -1]
+y <- y %>% 
+  pivot_longer(cols = c(1:53)) %>%
+  group_by(cell, name) %>%
+  filter(stat != "") %>%
+  pivot_wider(names_from = stat, values_from = value) %>%
+  rename(week = name)
+  
+```
+
+
+```{r}
+# Sys.time()
+# pm_10_files <- list.files("data/Grid_1km_UT/pm25/") # pm25
+# 
+# pm_10_all <- readRDS(paste0("data/Grid_1km_UT/pm25/", pm_10_files[1]))
+# pm_10_all <- data.table(pm_10_all)
+# pm_10_all$date <- substr(pm_10_files[1], start = 0, stop = nchar(pm_10_files[1])-4) #colname = date
+# 
+# system.time(
+# for(i in 1:length(pm_10_all)){#length(no2_10_files)) {
+#   pm_10 <- readRDS(paste0(getwd(), "/data/Grid_1km_UT/pm25/", pm_10_files[i]))
+#   pm_10 <- data.table(pm_10)
+#   pm_10$date <- substr(pm_10_files[i], start = 0, stop = nchar(pm_10_files[i])-4) #colname = date colnames(no2_10)
+#   #l = list(pm_10_all, pm_10)
+#   pm_10_all <- rbind(pm_10_all, pm_10, use.names = TRUE)
+# }
+# )
+# 
+# # 100: 658.220/60, ~11
+# # 20: 118.677/60, ~2
+# 
+# pm_10_all <- pm_10_all[-1, ] # duplicated jan 1
+# 
+# pm_10_all$week <- rep(1:ceiling(nrow(pm_10_all)/7), length.out = nrow(pm_10_all), each = 7)
+# 
+# #subset <- pm_10_all[, c(1:500, 256475)]
+# 
+# pm_10_stats <- pm_10_all %>%#subset %>% #group_by(personid) %>% 
+#   group_by(week) %>%
+#   summarise_all(list(mean = mean, max = max, median = median, min = min))
+# 
+# pm_10_all_t <- transpose(pm_10_stats)
+# rownames(pm_10_all_t) <- colnames(pm_10_stats)
+# colnames(pm_10_all_t) <- pm_10_stats$week
+# pm_10_all_t <- pm_10_all_t[-1, ]
+# 
+# pm_10_all_t$cell <- str_split_fixed(rownames(pm_10_all_t), "_", 2)[, 1]
+# pm_10_all_t$stat <- str_split_fixed(rownames(pm_10_all_t), "_", 2)[, 2]
+# 
+# pm_10_all_t <- pm_10_all_t %>% 
+#   pivot_longer(cols = c(1:53)) %>%
+#   group_by(cell, name) %>%
+#   pivot_wider(names_from = stat, values_from = value) %>%
+#   rename(week = name)
+# Sys.time()
+```
+
+#O3
+
+```{r}
+Sys.time()
+o3_10_files <- list.files("data/Grid_1km_UT/o3/") # o3
+#no2_10_files <- list.files("data/Grid_1km_UT/o3/") # o3
+
+o3_10_all <- readRDS(paste0("data/Grid_1km_UT/o3/", o3_10_files[1]))
+o3_10_all <- data.table(o3_10_all)
+#o3_10_all <- transpose(o3_10_all)
+o3_10_all <- cbind(o3_10_all, no2)
+o3_10_all <- o3_10_all %>%
+  filter(grid_id %in% populated_ids)
+o3_10_all <- o3_10_all[, c("grid_id", "o3_10_all")]
+colnames(o3_10_all) <- c("o3_10", "date")
+o3_10_all <- transpose(o3_10_all)
+colnames(o3_10_all) <- as.character(o3_10_all[1, ])
+o3_10_all <- o3_10_all[-1, ]
+o3_10_all$date <- substr(o3_10_files[1], start = 0, stop = nchar(o3_10_files[1])-4) #colname = date
+
+
+system.time(
+for(i in 1:length(o3_10_files)){#length(no2_10_files)) {
+  o3_10 <- readRDS(paste0("data/Grid_1km_UT/o3/", o3_10_files[i]))
+  o3_10 <- data.table(o3_10)
+  #o3_10 <- transpose(o3_10)
+  o3_10 <- cbind(o3_10, no2) %>%
+    filter(grid_id %in% populated_ids)
+  o3_10 <- o3_10[, c("grid_id", "o3_10")]
+  o3_10 <- transpose(o3_10)
+  colnames(o3_10) <- as.character(o3_10[1, ])
+  o3_10 <- o3_10[-1, ]
+  o3_10$date <- substr(o3_10_files[i], start = 0, stop = nchar(o3_10_files[i])-4) #colname = date colnames(no2_10)
+  l = list(o3_10_all, o3_10)
+  o3_10_all <- rbind(o3_10_all, o3_10, use.names = TRUE)
+}
+)
+#colnames(o3_10_all)
+
+o3_10_all <- o3_10_all[-1, ] # duplicated jan 1
+#no2_10_all <- x#[, c(1:7500)]
+
+o3_10_all$week <- rep(1:ceiling(nrow(o3_10_all)/7), length.out = nrow(o3_10_all), each = 7)
+
+o3_by_weeks <- split(o3_10_all, o3_10_all$week)
+#str(o3_by_weeks)
+
+fx <- function(x) {
+  c(min = min(x), mean = mean(x), med = median(x), max = max(x))
+}
+
+o3_10_stats <- as.data.table(lapply(o3_by_weeks[[1]], fx))
+o3_10_stats$stat <- c("min", "mean", "med", "max")
+o3_10_stats <- o3_10_stats %>%
+    pivot_wider(names_from = stat, values_from = c(1:65604))
+
+system.time(
+for(i in 2:53) {
+  t <- as.data.table(lapply(o3_by_weeks[[i]], fx))
+  t$stat <- c("min", "mean", "med", "max")
+  t <- t %>%
+    pivot_wider(names_from = stat, values_from = c(1:65604))
+  o3_10_stats <- rbind(o3_10_stats, t)
+}
+)
+o3_10_stats$week <- paste0("week_", rep(1:nrow(o3_10_stats)))
+
+o3_10_all_t <- transpose(o3_10_stats)
+rownames(o3_10_all_t) <- colnames(o3_10_stats)
+colnames(o3_10_all_t) <- o3_10_stats$week
+o3_10_all_t <- o3_10_all_t[-1, ]
+
+o3_10_all_t$cell <- str_split_fixed(rownames(o3_10_all_t), "_", 2)[, 1]
+o3_10_all_t$stat <- str_split_fixed(rownames(o3_10_all_t), "_", 2)[, 2]
+write.csv(o3_10_all_t, "o3_10_all_t.csv")
+
+z <- read.csv("o3_10_all_t.csv")
+z <- z[, -1]
+z <- z %>% 
+  pivot_longer(cols = c(1:53)) %>%
+  group_by(cell, name) %>%
+  filter(stat != "") %>%
+  pivot_wider(names_from = stat, values_from = value) %>%
+  rename(week = name)
+
+```
+
+
+```{r}
+# Sys.time()
+# o3_10_files <- list.files("data/Grid_1km_UT/o3/") # o3
+# 
+# o3_10_all <- readRDS(paste0("data/Grid_1km_UT/o3/", o3_10_files[1]))
+# o3_10_all <- data.table(o3_10_all) %>%
+#   transpose()
+# o3_10_all$date <- substr(o3_10_files[1], start = 0, stop = nchar(o3_10_files[1])-4)
+# #names(o3_10_all) <- c("o3_10", "date")
+# #colname = date
+# #rbind(o3_10_all, o3_10_all, use.names = TRUE)
+# system.time(
+# for(i in 1:length(o3_10_files)){#length(no2_10_files)) {
+#   o3_10 <- readRDS(paste0("data/Grid_1km_UT/o3/", o3_10_files[i]))
+#   o3_10 <- data.table(o3_10) %>%
+#     transpose()
+#   o3_10$date <- substr(o3_10_files[i], start = 0, stop = nchar(o3_10_files[i])-4)
+#   o3_10_all <- rbind(o3_10_all, o3_10, use.names = TRUE)
+#   }
+# )
+# 
+# o3_10_all <- o3_10_all[-1, ] # duplicated jan 1
+# 
+# o3_10_all$week <- rep(1:ceiling(nrow(o3_10_all)/7), length.out = nrow(o3_10_all), each = 7)
+# 
+# #subset <- o3_10_all[, c(1:500, 256475)]
+# 
+# o3_10_stats <- o3_10_all %>%#subset %>% #group_by(personid) %>% 
+#   group_by(week) %>%
+#   summarise_all(list(mean = mean, max = max, median = median, min = min))
+# 
+# o3_10_all_t <- transpose(o3_10_stats)
+# rownames(o3_10_all_t) <- colnames(o3_10_stats)
+# colnames(o3_10_all_t) <- o3_10_stats$week
+# o3_10_all_t <- o3_10_all_t[-1, ]
+# 
+# o3_10_all_t$cell <- str_split_fixed(rownames(o3_10_all_t), "_", 2)[, 1]
+# o3_10_all_t$stat <- str_split_fixed(rownames(o3_10_all_t), "_", 2)[, 2]
+# 
+# o3_10_all_t <- o3_10_all_t %>% 
+#   pivot_longer(cols = c(1:53)) %>%
+#   group_by(cell, name) %>%
+#   pivot_wider(names_from = stat, values_from = value) %>%
+#   rename(week = name)
+# Sys.time()
+
+```
+
+# Combining pollutants
+
+```{r}
+
+names(x) <- c("cell", "week", "mean_no2", "max_no2", "median_no2", "min_no2")
+names(y) <- c("cell", "week", "mean_pm", "max_pm", "median_pm", "min_pm")
+names(z) <- c("cell", "week", "mean_o3", "max_o3", "median_o3", "min_o3")
+
+poll <- merge(x, y, by = c("cell", "week"))
+poll <- merge(poll, z, by = c("cell", "week"))
+
+vars <- c("mean_no2", "max_no2", "median_no2", "min_no2",
+          "mean_pm", "max_pm", "median_pm", "min_pm",
+          "mean_o3", "max_o3", "median_o3", "min_o3")
+
+num <- function(x) (as.numeric(x))
+
+poll <- poll %>%
+  mutate_at(vars, num)
+
+summary(poll)
+
+```
+
