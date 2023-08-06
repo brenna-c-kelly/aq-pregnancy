@@ -129,8 +129,7 @@ x <- x %>%
   filter(stat != "") %>%
   pivot_wider(names_from = stat, values_from = value) %>%
   rename(week = name)
-)
-Sys.time()
+
 ```
 
 # PM2.5
@@ -153,7 +152,7 @@ pm_10_all <- pm_10_all[-1, ]
 pm_10_all$date <- substr(pm_10_files[1], start = 0, stop = nchar(pm_10_files[1])-4) #colname = date
 
 system.time(
-for(i in 1:length(pm_10_files)){#length(no2_10_files)) {
+for(i in 1:7){#length(pm_10_files)){#length(no2_10_files)) {
   pm_10 <- readRDS(paste0("data/Grid_1km_UT/pm25/", pm_10_files[i]))
   pm_10 <- data.table(pm_10)
   pm_10 <- transpose(pm_10)
@@ -404,7 +403,7 @@ z <- z %>%
 # Combining pollutants
 
 ```{r}
-
+str(x)
 names(x) <- c("cell", "week", "mean_no2", "max_no2", "median_no2", "min_no2")
 names(y) <- c("cell", "week", "mean_pm", "max_pm", "median_pm", "min_pm")
 names(z) <- c("cell", "week", "mean_o3", "max_o3", "median_o3", "min_o3")
