@@ -21,17 +21,15 @@ library(data.table)
 library(multidplyr)
 library(doParallel)
 
-cl <- makeCluster(4)
-registerDoParallel(cl)
-
-#cluster <- new_cluster(10)
-
 ```
 
 # NO2
 
 ```{r}
-populated_ids <- read.csv("/Users/brenna/Documents/School/Research/aqs-inequities/aqs_inequities/populated_ids.csv")
+
+list.files("data/Grid_1km_UT/NO2/Daily/")
+
+populated_ids <- read.csv("populated_ids_10.csv")
 populated_ids <- populated_ids[, c("x")]
 
 no2 <- read.csv("data/aq/NO2Grid.csv")
@@ -67,6 +65,9 @@ colnames(no2_10_all) <- as.character(no2_10_all[1, ])
 no2_10_all <- no2_10_all[-1, ]
 no2_10_all$date <- substr(no2_10_files[1], start = 0, stop = nchar(no2_10_files[1])-4) #colname = date
 
+nrow(no2_10_all)
+test_pop <- no2_10_all
+
 system.time(
 for(i in 1:length(no2_10_files)){#length(no2_10_files)) {
   no2_10 <- readRDS(paste0("data/Grid_1km_UT/NO2/Daily/2010/", no2_10_files[i]))
@@ -84,7 +85,7 @@ for(i in 1:length(no2_10_files)){#length(no2_10_files)) {
 }
 )
 
-no2_10_all <- no2_10_all[-1, ] # duplicated jan 1
+#no2_10_all <- no2_10_all[-1, ] # duplicated jan 1
 #no2_10_all <- x#[, c(1:7500)]
 
 no2_10_all$week <- rep(1:ceiling(nrow(no2_10_all)/7), length.out = nrow(no2_10_all), each = 7)
@@ -119,9 +120,10 @@ no2_10_all_t <- no2_10_all_t[-1, ]
 
 no2_10_all_t$cell <- str_split_fixed(rownames(no2_10_all_t), "_", 2)[, 1]
 no2_10_all_t$stat <- str_split_fixed(rownames(no2_10_all_t), "_", 2)[, 2]
-write.csv(no2_10_all_t, "no2_10_all_t.csv")
-no2_10_all_t <- read.csv("no2_10_all_t.csv")
+write.csv(no2_10_all_t, "no2_10_all_t_2010.csv")
+#no2_10_all_t <- read.csv("no2_10_all_t_2010.csv")
 x <- read.csv("no2_10_all_t.csv")
+
 x <- x[, -1]
 x <- x %>% 
   pivot_longer(cols = c(1:53)) %>%
@@ -129,6 +131,8 @@ x <- x %>%
   filter(stat != "") %>%
   pivot_wider(names_from = stat, values_from = value) %>%
   rename(week = name)
+head(x)
+
 
 ```
 

@@ -9,6 +9,8 @@ library(raster)
 library(tibble)
 library(stringr)
 
+
+
 # air temperature
 tmp_mean <- nc_open("data/gridMET /tmmn_2014.nc")
 tmp_max <- nc_open("data/gridMET /tmmx_2014.nc")
